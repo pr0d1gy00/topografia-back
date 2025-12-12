@@ -29,7 +29,7 @@ export class PointsService {
   async findAllByProject(projectId: number) {
     return this.prisma.point.findMany({
       where: { projectId },
-      orderBy: { id: 'asc' }, 
+      orderBy: { id: 'desc' }, // <--- ESTO ES OBLIGATORIO para ver lo último arriba
     });
   }
 

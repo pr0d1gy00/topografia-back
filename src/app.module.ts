@@ -11,10 +11,11 @@ import { LayerModule } from './layer/layer.module';
 import { SurfaceModule } from './surface/surface.module';
 import { InstrumentModule } from './instrument/instrument.module';
 import { LevelingModule } from './leveling/leveling.module';
+import { ProjectModule } from './project/project.module';
 
 @Module({
   controllers: [AppController,],
   providers: [AppService,PrismaService ],
-  imports: [ObservationModule, StationModule, PointModule, LevelingModule, InstrumentModule, SurfaceModule, LayerModule],
+  imports: [ObservationModule, StationModule, PointModule, LevelingModule, InstrumentModule, SurfaceModule, LayerModule, ProjectModule],
 })
 export class AppModule {}
