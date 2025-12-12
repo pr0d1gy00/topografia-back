@@ -23,4 +23,10 @@ export class LevelingController {
   findRun(@Param('id', ParseIntPipe) id: number) {
     return this.levelingService.findRun(id);
   }
+  // src/leveling/leveling.controller.ts
+  @Get('project/:projectId')
+  findAllByProject(@Param('projectId', ParseIntPipe) projectId: number) {
+    // Necesitas implementar este método en leveling.service.ts también
+    return this.levelingService.findAllByProject(projectId); 
+  }
 }

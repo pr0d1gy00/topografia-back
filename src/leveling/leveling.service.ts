@@ -16,6 +16,19 @@ export class LevelingService {
       },
     });
   }
+  // src/leveling/leveling.service.ts
+  async findAllByProject(projectId: number) {
+    return this.prisma.levelingRun.findMany({
+      where: { projectId },
+      include: { 
+        readings: { 
+          include: { point: true }, // Incluir nombre del punto
+          orderBy: { order: 'asc' } // Ordenar por secuencia de lectura
+        } 
+      },
+      orderBy: { id: 'desc' }
+    });
+  }
 
   // 2. Crear una Lectura y CALCULAR Z automáticamente
   async addReading(dto: CreateLevelingReadingDto) {
