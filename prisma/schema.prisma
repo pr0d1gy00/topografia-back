@@ -1,0 +1,236 @@
+// schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ==========================================
+// 1. GESTIÓN DE USUARIO Y EQUIPOS
+// ==========================================
+
+model app_user {
+  id          Int          @id @default(autoincrement())
+  name        String
+  email       String       @unique
+  password    String
+  createdAt   DateTime     @default(now())
+  
+  projects    project[]
+  instruments instrument[]
+}
+
+model instrument {
+  id             Int            @id @default(autoincrement())
+  name           String         // Ej: "Wild T2", "Leica TS06"
+  type           InstrumentType // ENUM: THEODOLITE, LEVEL, TOTAL_STATION
+  serial         String?
+  
+  // Constantes para cálculos de Teodolito
+  stadiaConstant Float          @default(100) // "K" generatriz (casi siempre 100)
+  stadiaAddition Float          @default(0)   // "C" constante aditiva (casi siempre 0)
+  
+  userId         Int
+  user           app_user       @relation(fields: [userId], references: [id])
+  
+  stations     station[]
+  levelingRuns levelingRun[]
+}
+
+model project {
+  id           Int           @id @default(autoincrement())
+  name         String
+  location     String?
+  description  String?
+  userId       Int
+  user         app_user      @relation(fields: [userId], references: [id])
+  
+  // Datos Crudos
+  stations     station[]     // Puestas de aparato (Teodolito/Estación)
+  levelingRuns levelingRun[] // Libretas de nivelación
+  
+  // Datos Procesados
+  points       point[]       // La nube de coordenadas
+  surfaces     surface[]     // Para volúmenes y curvas de nivel
+  layers       layer[]       // Para dibujo CAD
+  
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+// ==========================================
+// 2. EL CORAZÓN DE CÁLCULO (Teodolito/Estación)
+// ==========================================
+
+model station {
+  id               Int         @id @default(autoincrement())
+  projectId        Int
+  project          project     @relation(fields: [projectId], references: [id])
+  instrumentId     Int
+  instrument       instrument  @relation(fields: [instrumentId], references: [id])
+  
+  // ¿Dónde estoy parado? (Punto Estación)
+  occupiedPointId  Int
+  occupiedPoint    point       @relation("occupied_station", fields: [occupiedPointId], references: [id])
+  
+  heightInstrument Float       // Altura Instrumental (hi). Vital para la Z.
+  
+  // Orientación (Ceros atrás o Azimut conocido)
+  backsightPointId Int?
+  backsightPoint   point?      @relation("backsight_point", fields: [backsightPointId], references: [id])
+  backsightAngle   Float?      // El ángulo que se le puso al aparato mirando atrás
+  
+  observations     observation[]
+  createdAt        DateTime    @default(now())
+}
+
+model observation {
+  id            Int      @id @default(autoincrement())
+  stationId     Int
+  station       station  @relation(fields: [stationId], references: [id])
+  
+  // Si la observación generó un punto nuevo, lo vinculamos aquí
+  targetPointId Int?     
+  targetPoint   point?   @relation("target_observation", fields: [targetPointId], references: [id])
+  
+  // --- ÁNGULOS (Común a Teodolito y Estación) ---
+  angleHorizontal Float  // Azimut o ángulo leido
+  angleVertical   Float? // Cenital (necesario para reducir distancias al horizonte)
+  
+  // --- ALTURA DE MIRA/PRISMA ---
+  heightTarget    Float  // Altura del prisma o donde se puso el hilo medio
+  
+  // --- CÁLCULO DE DISTANCIA (Híbrido) ---
+  
+  // A. Caso Teodolito (Estadía)
+  isStadia        Boolean @default(false)
+  stadiaTop       Float?  // Hilo Superior
+  stadiaBottom    Float?  // Hilo Inferior
+  stadiaMiddle    Float?  // Hilo Medio (verificación)
+  
+  // B. Caso Estación Total o Cinta
+  distanceSlope   Float?  // Distancia inclinada (directa del aparato)
+  distanceHoriz   Float?  // Distancia horizontal (si se midió a cinta)
+
+  description     String? // Ej: "Esquina Muro", "Poste"
+}
+
+// ==========================================
+// 3. NIVELACIÓN (Nivel de Ingeniero)
+// ==========================================
+
+model levelingRun {
+  id           Int               @id @default(autoincrement())
+  name         String            // Nombre del circuito
+  projectId    Int
+  project      project           @relation(fields: [projectId], references: [id])
+  instrumentId Int?
+  instrument   instrument?       @relation(fields: [instrumentId], references: [id])
+  
+  readings     levelingReading[]
+}
+
+model levelingReading {
+  id            Int         @id @default(autoincrement())
+  runId         Int
+  run           levelingRun @relation(fields: [runId], references: [id])
+  
+  pointId       Int?        // Punto asociado (BM o punto de cambio)
+  point         point?      @relation("level_reading", fields: [pointId], references: [id])
+  
+  // Columnas clásicas de libreta topográfica
+  backsight     Float?      // Vista Atrás (+)
+  intermediate  Float?      // Vista Intermedia
+  foresight     Float?      // Vista Adelante (-)
+  
+  // Resultados calculados
+  calculatedAI  Float?      // Altura Instrumento
+  calculatedZ   Float?      // Cota Final
+  
+  order         Int         // 1, 2, 3... para mantener el orden de la libreta
+}
+
+// ==========================================
+// 4. DATOS RESULTANTES Y CAD
+// ==========================================
+
+model point {
+  id          Int      @id @default(autoincrement())
+  projectId   Int
+  project     project  @relation(fields: [projectId], references: [id])
+  
+  name        String   // Nomenclatura: "E-1", "100"
+  x           Float    // Este
+  y           Float    // Norte
+  z           Float    // Cota / Elevación
+  code        String?  // Descripción corta para filtrar capas: "ARBOL", "EJE"
+  
+  isFixed     Boolean  @default(false) // Si es true, el cálculo no debe sobrescribirlo
+  
+  // Relaciones inversas (Historial)
+  stationsOccupied station[]         @relation("occupied_station")
+  backsightsUsed   station[]         @relation("backsight_point")
+  observations     observation[]     @relation("target_observation")
+  levelReadings    levelingReading[] @relation("level_reading")
+  
+  surfaces    pointsOnSurfaces[]
+}
+
+model layer {
+  id        Int      @id @default(autoincrement())
+  name      String   // Ej: "Linderos", "Construcciones"
+  color     String   // Ej: "#FF0000"
+  visible   Boolean  @default(true)
+  projectId Int
+  project   project  @relation(fields: [projectId], references: [id])
+  
+  // Aquí guardamos las LÍNEAS dibujadas.
+  // Formato GeoJSON FeatureCollection para facilitar el dibujo en frontend
+  // Ejemplo: { "type": "Feature", "geometry": { "type": "LineString", "coordinates": [[x1,y1], [x2,y2]] } }
+  drawingData Json?    
+}
+
+// ==========================================
+// 5. VOLÚMENES Y CURVAS DE NIVEL
+// ==========================================
+
+model surface {
+  id              Int      @id @default(autoincrement())
+  name            String   // Ej: "Terreno Natural", "Descapote"
+  projectId       Int
+  project         project  @relation(fields: [projectId], references: [id])
+  type            SurfaceType // INITIAL, FINAL
+  
+  points          pointsOnSurfaces[]
+  
+  // Configuración de visualización de Curvas
+  contourIntervalMajor Float @default(5.0)
+  contourIntervalMinor Float @default(1.0)
+  
+  // Caché de las curvas calculadas (Para no procesar siempre)
+  contourGeometry Json? 
+}
+
+model pointsOnSurfaces {
+  pointId   Int
+  surfaceId Int
+  point     point   @relation(fields: [pointId], references: [id])
+  surface   surface @relation(fields: [surfaceId], references: [id])
+
+  @@id([pointId, surfaceId])
+}
+
+enum InstrumentType {
+  THEODOLITE
+  LEVEL
+  TOTAL_STATION
+  GPS
+}
+
+enum SurfaceType {
+  INITIAL
+  FINAL
+}
