@@ -1,3 +1,4 @@
+// src/surface/surface.controller.ts
 import { Controller, Post, Body, Get, Param, Patch, ParseIntPipe } from '@nestjs/common';
 import { SurfacesService } from './surface.service';
 import { CreateSurfaceDto, AddPointsToSurfaceDto, UpdateSurfaceResultDto } from './dto/create-surface.dto';
@@ -12,14 +13,11 @@ export class SurfacesController {
   }
 
   @Post(':id/points')
-  addPoints(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: AddPointsToSurfaceDto,
-  ) {
+  addPoints(@Param('id', ParseIntPipe) id: number, @Body() dto: AddPointsToSurfaceDto) {
     return this.surfacesService.addPoints(id, dto);
   }
 
-  @Get(':id/full') // Endpoint pesado: trae todos los puntos para calcular
+  @Get(':id/full')
   findOneWithPoints(@Param('id', ParseIntPipe) id: number) {
     return this.surfacesService.findOneWithPoints(id);
   }
@@ -30,10 +28,13 @@ export class SurfacesController {
   }
   
   @Patch(':id/results')
-  updateResult(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateSurfaceResultDto
-  ) {
+  updateResult(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateSurfaceResultDto) {
     return this.surfacesService.updateResult(id, dto);
+  }
+
+  // --- NUEVO ENDPOINT ---
+  @Post('calculate-volume')
+  async calculateVolume(@Body() body: { initialId: number, finalId: number }) {
+    return this.surfacesService.calculateVolume(body.initialId, body.finalId);
   }
 }
